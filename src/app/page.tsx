@@ -39,20 +39,19 @@ export default function Home() {
   return (
     <main className="bg-neutral-950">
       {/* Hero + Globe (single section) */}
-      <section className="py-16 sm:px-12 sm:py-20">
+      <section className="pt-40 pb-16 sm:px-12 sm:pt-48 sm:pb-20">
         <div className="mx-auto flex w-full flex-col gap-10">
-          <div className="flex flex-col px-6 sm:px-0">
-            <div className="text-xs uppercase tracking-[0.2em] text-emerald-300/70">Scroll story</div>
+          <div className="flex flex-col items-center px-6 text-center sm:px-0">
             <div className="text-6xl sm:text-7xl md:text-8xl font-semibold tracking-tight">
               Juric<span className="text-neutral-400">.</span>
             </div>
-            <p className="max-w-2xl text-base sm:text-lg text-neutral-300">
+            <p className="max-w-2xl text-base text-neutral-300 sm:text-lg sm:mx-auto">
               Welcome, the globe with your two points, then the follow-up. No fades or
               sticky layers—just scroll.
             </p>
           </div>
 
-          <div className="relative left-1/2 w-screen -translate-x-1/2 sm:static sm:w-full sm:translate-x-0">
+          <div className="relative left-1/2 w-screen -translate-x-1/2 mt-24 sm:mt-28 sm:static sm:w-full sm:translate-x-0">
             {canRenderGlobe ? (
               <GlobeScene texturesReady={texturesPreloaded} />
             ) : (
