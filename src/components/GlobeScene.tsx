@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GlobeMethods } from "react-globe.gl";
 import { haversineKm } from "@/lib/geo";
 
@@ -9,6 +9,7 @@ type Point = { lat: number; lng: number; label: string };
 
 type GlobeSceneProps = {
   texturesReady?: boolean;
+  zoomProgress?: number;
 };
 
 type MaybeWebGPUGlobal = typeof globalThis & {
@@ -47,8 +48,13 @@ const Globe = dynamic(async () => {
   return import("react-globe.gl");
 }, { ssr: false });
 
-export default function GlobeScene({ texturesReady = true }: GlobeSceneProps) {
+const BASE_POINT_OF_VIEW = { lat: 20, lng: 0 };
+const FAR_ALTITUDE = 1.2;
+const CLOSE_ALTITUDE = 0.6;
+
+export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: GlobeSceneProps) {
   const globeRef = useRef<GlobeMethods | null>(null);
+  const lastAltitudeRef = useRef<number | null>(null);
   const [devicePixelRatio] = useState(() =>
     typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 1.5) : 1.5
   );
@@ -86,18 +92,55 @@ export default function GlobeScene({ texturesReady = true }: GlobeSceneProps) {
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0;
 
-    g.pointOfView({ lat: 20, lng: 0, altitude: 1.2 }, 0);
-
+    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: FAR_ALTITUDE }, 0);
     const rendererDom = g.renderer().domElement;
     rendererDom.style.pointerEvents = "none";
     rendererDom.style.touchAction = "none";
   }, []);
+
+  const applyBasePointOfView = useCallback(() => {
+    const g = globeRef.current;
+    if (!g) return;
+    lastAltitudeRef.current = FAR_ALTITUDE;
+    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: FAR_ALTITUDE }, 0);
+  }, []);
+
+  useEffect(() => {
+    // Re-assert baseline when textures change or on first mount. Use RAF + timeout to
+    // survive internal three.js ready timing.
+    const raf = requestAnimationFrame(applyBasePointOfView);
+    const timeout = setTimeout(applyBasePointOfView, 120);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timeout);
+    };
+  }, [applyBasePointOfView, texturesReady]);
+
+  useEffect(() => {
+    const g = globeRef.current;
+    if (!g) return;
+
+    const clampedProgress = Math.min(Math.max(zoomProgress, 0), 1);
+    const targetAltitude =
+      FAR_ALTITUDE - (FAR_ALTITUDE - CLOSE_ALTITUDE) * clampedProgress;
+
+    if (
+      lastAltitudeRef.current !== null &&
+      Math.abs(lastAltitudeRef.current - targetAltitude) < 0.0005
+    ) {
+      return;
+    }
+
+    lastAltitudeRef.current = targetAltitude;
+    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: targetAltitude }, 0);
+  }, [zoomProgress]);
 
   return (
     <div className="relative h-full w-full bg-neutral-950">
       <Globe
         className="h-full w-full pointer-events-none"
         ref={globeRef}
+        onGlobeReady={applyBasePointOfView}
         globeImageUrl="https://unpkg.com/three-globe/example/img/earth-dark.jpg"
         backgroundColor="rgba(0,0,0,0)"
         showAtmosphere

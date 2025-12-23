@@ -1,13 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const GlobeScene = dynamic(() => import("@/components/GlobeScene"), { ssr: false });
 
 export default function Home() {
   const [canRenderGlobe, setCanRenderGlobe] = useState(true);
   const [texturesPreloaded, setTexturesPreloaded] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -33,7 +35,32 @@ export default function Home() {
       )
     ).finally(() => setTexturesPreloaded(true));
 
-    return () => cancelAnimationFrame(raf);
+    const handleScroll = () => {
+      if (scrollFrameRef.current !== null) return;
+      scrollFrameRef.current = requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        const deadZone = Math.max(window.innerHeight * 0.12, 80); // keep initial view until user scrolls a bit
+        const scrollRange = Math.max(window.innerHeight * 0.8, 1);
+        const offsetY = Math.max(window.scrollY - deadZone, 0);
+        const progress = Math.min(offsetY / scrollRange, 1);
+        setScrollProgress((prev) => {
+          // Skip tiny updates to avoid extra React work during fast scrolls
+          if (Math.abs(prev - progress) < 0.003) return prev;
+          return progress;
+        });
+      });
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    };
   }, []);
 
   return (
@@ -53,7 +80,7 @@ export default function Home() {
 
           <div className="relative left-1/2 w-screen -translate-x-1/2 mt-24 sm:mt-28 sm:static sm:w-full sm:translate-x-0">
             {canRenderGlobe ? (
-              <GlobeScene texturesReady={texturesPreloaded} />
+              <GlobeScene texturesReady={texturesPreloaded} zoomProgress={scrollProgress} />
             ) : (
               <div className="">
               </div>
