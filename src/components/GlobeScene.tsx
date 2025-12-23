@@ -117,7 +117,7 @@ export default function GlobeScene({ texturesReady = true }: GlobeSceneProps) {
         arcStartLng="startLng"
         arcEndLat="endLat"
         arcEndLng="endLng"
-        arcColor={() => ["rgba(255,255,255,0.15)", "rgba(255,255,255,0.85)"]}
+        arcColor={() => ["rgba(255,255,255,0.15)", "rgba(94, 234, 180, 0.85)"]}
         arcAltitude={0.22}
         arcStroke={0.7}
         arcDashLength={0.5}
