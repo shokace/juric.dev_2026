@@ -39,7 +39,7 @@ export default function Home() {
       if (scrollFrameRef.current !== null) return;
       scrollFrameRef.current = requestAnimationFrame(() => {
         scrollFrameRef.current = null;
-        const deadZone = Math.max(window.innerHeight * 0.12, 80); // keep initial view until user scrolls a bit
+        const deadZone = Math.max(window.innerHeight * 0.12, 180); // keep initial view until user scrolls a bit
         const scrollRange = Math.max(window.innerHeight * 0.8, 1);
         const offsetY = Math.max(window.scrollY - deadZone, 0);
         const progress = Math.min(offsetY / scrollRange, 1);
@@ -65,7 +65,6 @@ export default function Home() {
 
   return (
     <main className="bg-neutral-950">
-      {/* Hero + Globe (single section) */}
       <section className="pt-40 pb-16 sm:px-12 sm:pt-48 sm:pb-20">
         <div className="mx-auto flex w-full flex-col gap-10">
           <div className="flex flex-col items-center px-6 text-center sm:px-0">
