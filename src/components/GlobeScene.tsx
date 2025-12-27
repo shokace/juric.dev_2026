@@ -48,9 +48,89 @@ const Globe = dynamic(async () => {
   return import("react-globe.gl");
 }, { ssr: false });
 
-const BASE_POINT_OF_VIEW = { lat: 20, lng: 0 };
-const FAR_ALTITUDE = 1.2;
-const CLOSE_ALTITUDE = 0.6;
+const DEFAULT_POINT_OF_VIEW = { lat: 20, lng: 0 };
+const FAR_ALTITUDE = 4.6;
+const CLOSE_ALTITUDE = 1.1;
+
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+const wrapLng = (lng: number) => {
+  const wrapped = ((lng + 180) % 360) - 180;
+  return wrapped < -180 ? wrapped + 360 : wrapped;
+};
+
+const angularDistance = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const dLat = lat2 - lat1;
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  return 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+const cartesianFromLatLng = ({ lat, lng }: { lat: number; lng: number }) => {
+  const phi = toRad(lat);
+  const theta = toRad(lng);
+  const x = Math.cos(phi) * Math.cos(theta);
+  const y = Math.cos(phi) * Math.sin(theta);
+  const z = Math.sin(phi);
+  return { x, y, z };
+};
+
+const latLngFromCartesian = ({ x, y, z }: { x: number; y: number; z: number }) => {
+  const hyp = Math.sqrt(x * x + y * y);
+  return {
+    lat: toDeg(Math.atan2(z, hyp)),
+    lng: wrapLng(toDeg(Math.atan2(y, x))),
+  };
+};
+
+const viewForPoints = (points: Point[]) => {
+  if (points.length === 0) {
+    return { ...DEFAULT_POINT_OF_VIEW, farAltitude: FAR_ALTITUDE };
+  }
+
+  if (points.length === 1) {
+    return { lat: points[0].lat, lng: points[0].lng, farAltitude: CLOSE_ALTITUDE + 0.1 };
+  }
+
+  const sum = points.reduce(
+    (acc, point) => {
+      const c = cartesianFromLatLng(point);
+      acc.x += c.x;
+      acc.y += c.y;
+      acc.z += c.z;
+      return acc;
+    },
+    { x: 0, y: 0, z: 0 }
+  );
+
+  const magnitude = Math.sqrt(sum.x * sum.x + sum.y * sum.y + sum.z * sum.z);
+  const center =
+    magnitude === 0
+      ? DEFAULT_POINT_OF_VIEW
+      : latLngFromCartesian({ x: sum.x / magnitude, y: sum.y / magnitude, z: sum.z / magnitude });
+
+  const maxAngularSpread = points.reduce((max, point) => {
+    const angle = angularDistance(center, point);
+    return Math.max(max, angle);
+  }, 0);
+
+  // Keep the camera far enough back to see the widest-spread point while avoiding over-zooming.
+  const spreadRatio = Math.min(maxAngularSpread / (Math.PI / 2), 1);
+  const farAltitude =
+    CLOSE_ALTITUDE +
+    (FAR_ALTITUDE - CLOSE_ALTITUDE) * (0.35 + 0.65 * spreadRatio);
+
+  return {
+    ...center,
+    farAltitude: Math.min(Math.max(farAltitude, CLOSE_ALTITUDE), FAR_ALTITUDE),
+  };
+};
 
 export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: GlobeSceneProps) {
   const globeRef = useRef<GlobeMethods | null>(null);
@@ -80,6 +160,16 @@ export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: G
     [viewer, me]
   );
 
+  const basePointOfView = useMemo(() => viewForPoints(points), [points]);
+  const closeAltitude = useMemo(
+    () => Math.max(CLOSE_ALTITUDE, basePointOfView.farAltitude - 1.35),
+    [basePointOfView.farAltitude]
+  );
+
+  useEffect(() => {
+    lastAltitudeRef.current = null;
+  }, [basePointOfView.lat, basePointOfView.lng, basePointOfView.farAltitude]);
+
   useEffect(() => {
     const g = globeRef.current;
     if (!g) return;
@@ -92,18 +182,24 @@ export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: G
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0;
 
-    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: FAR_ALTITUDE }, 0);
+    g.pointOfView(
+      { lat: basePointOfView.lat, lng: basePointOfView.lng, altitude: basePointOfView.farAltitude },
+      0
+    );
     const rendererDom = g.renderer().domElement;
     rendererDom.style.pointerEvents = "none";
     rendererDom.style.touchAction = "none";
-  }, []);
+  }, [basePointOfView.lat, basePointOfView.lng, basePointOfView.farAltitude]);
 
   const applyBasePointOfView = useCallback(() => {
     const g = globeRef.current;
     if (!g) return;
-    lastAltitudeRef.current = FAR_ALTITUDE;
-    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: FAR_ALTITUDE }, 0);
-  }, []);
+    lastAltitudeRef.current = basePointOfView.farAltitude;
+    g.pointOfView(
+      { lat: basePointOfView.lat, lng: basePointOfView.lng, altitude: basePointOfView.farAltitude },
+      0
+    );
+  }, [basePointOfView]);
 
   useEffect(() => {
     // Re-assert baseline when textures change or on first mount. Use RAF + timeout to
@@ -122,7 +218,8 @@ export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: G
 
     const clampedProgress = Math.min(Math.max(zoomProgress, 0), 1);
     const targetAltitude =
-      FAR_ALTITUDE - (FAR_ALTITUDE - CLOSE_ALTITUDE) * clampedProgress;
+      basePointOfView.farAltitude -
+      (basePointOfView.farAltitude - closeAltitude) * clampedProgress;
 
     if (
       lastAltitudeRef.current !== null &&
@@ -132,8 +229,11 @@ export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: G
     }
 
     lastAltitudeRef.current = targetAltitude;
-    g.pointOfView({ ...BASE_POINT_OF_VIEW, altitude: targetAltitude }, 0);
-  }, [zoomProgress]);
+    g.pointOfView(
+      { lat: basePointOfView.lat, lng: basePointOfView.lng, altitude: targetAltitude },
+      0
+    );
+  }, [zoomProgress, basePointOfView, closeAltitude]);
 
   return (
     <div className="relative h-full w-full bg-neutral-950">
