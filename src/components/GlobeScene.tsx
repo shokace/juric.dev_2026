@@ -6,6 +6,14 @@ import type { GlobeMethods } from "react-globe.gl";
 import { haversineKm } from "@/lib/geo";
 
 type Point = { lat: number; lng: number; label: string };
+type IpLocation = {
+  lat: number;
+  lng: number;
+  city?: string;
+  region?: string;
+  country?: string;
+  ip?: string | null;
+};
 
 type GlobeSceneProps = {
   texturesReady?: boolean;
@@ -135,29 +143,110 @@ const viewForPoints = (points: Point[]) => {
 export default function GlobeScene({ texturesReady = true, zoomProgress = 0 }: GlobeSceneProps) {
   const globeRef = useRef<GlobeMethods | null>(null);
   const lastAltitudeRef = useRef<number | null>(null);
+  const lastViewerIpRef = useRef<string | null>(null);
+  const lastPetarSignatureRef = useRef<string | null>(null);
   const [devicePixelRatio] = useState(() =>
     typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 1.5) : 1.5
   );
 
-  const me: Point = useMemo(
-    () => ({ lat: 45.815, lng: 15.9819, label: "Petar (general area)" }),
-    []
-  );
-  const viewer: Point = useMemo(
-    () => ({ lat: 37.7749, lng: -122.4194, label: "Viewer (placeholder)" }),
-    []
-  );
+  const [petar, setPetar] = useState<Point>(() => ({
+    lat: 45.815,
+    lng: 15.9819,
+    label: "Petar (general area)",
+  }));
+  const [viewer, setViewer] = useState<Point>(() => ({
+    lat: 37.7749,
+    lng: -122.4194,
+    label: "Visitor (approx)",
+  }));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const pullViewerLocation = async () => {
+      try {
+        const res = await fetch("/api/ip-location", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as IpLocation;
+
+        if (body.ip && lastViewerIpRef.current === body.ip) return;
+        if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) return;
+
+        const locationLabel = [body.city, body.region, body.country].filter(Boolean).join(", ");
+
+        lastViewerIpRef.current = body.ip ?? null;
+        if (cancelled) return;
+
+        setViewer((prev) => {
+          const sameLatLng =
+            Math.abs(prev.lat - body.lat) < 0.00001 && Math.abs(prev.lng - body.lng) < 0.00001;
+          if (sameLatLng && locationLabel.length === 0) return prev;
+
+          return {
+            lat: body.lat,
+            lng: body.lng,
+            label: locationLabel ? `You • ${locationLabel}` : "You (auto)",
+          };
+        });
+      } catch (error) {
+        console.error("Viewer IP lookup failed", error);
+      }
+    };
+
+    pullViewerLocation();
+    const interval = setInterval(pullViewerLocation, 5 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const sourceUrl = process.env.NEXT_PUBLIC_PETAR_LOCATION_URL;
+    if (!sourceUrl) return;
+    let cancelled = false;
+
+    const pullPetarLocation = async () => {
+      try {
+        const res = await fetch(sourceUrl, { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { lat: number; lng: number; label?: string; updatedAt?: string };
+        if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) return;
+
+        const signature = `${body.lat.toFixed(5)},${body.lng.toFixed(5)},${body.label ?? ""},${body.updatedAt ?? ""}`;
+        if (lastPetarSignatureRef.current === signature) return;
+
+        lastPetarSignatureRef.current = signature;
+        if (cancelled) return;
+
+        setPetar((prev) => ({
+          lat: body.lat,
+          lng: body.lng,
+          label: body.label?.trim() || prev.label || "Petar (auto)",
+        }));
+      } catch (error) {
+        console.error("Petar location fetch failed", error);
+      }
+    };
+
+    pullPetarLocation();
+    const interval = setInterval(pullPetarLocation, 60 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const distanceKm = useMemo(() => {
-    return Math.round(
-      haversineKm({ lat: me.lat, lng: me.lng }, { lat: viewer.lat, lng: viewer.lng })
-    );
-  }, [me, viewer]);
+    return Math.round(haversineKm({ lat: petar.lat, lng: petar.lng }, { lat: viewer.lat, lng: viewer.lng }));
+  }, [petar, viewer]);
 
-  const points = useMemo(() => [me, viewer], [me, viewer]);
+  const points = useMemo(() => [petar, viewer], [petar, viewer]);
   const arcs = useMemo(
-    () => [{ startLat: viewer.lat, startLng: viewer.lng, endLat: me.lat, endLng: me.lng }],
-    [viewer, me]
+    () => [{ startLat: viewer.lat, startLng: viewer.lng, endLat: petar.lat, endLng: petar.lng }],
+    [viewer, petar]
   );
 
   const basePointOfView = useMemo(() => viewForPoints(points), [points]);
