@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import NowPlaying from "@/components/NowPlaying";
 
 const GlobeScene = dynamic(() => import("@/components/GlobeScene"), { ssr: false });
 
@@ -69,11 +70,10 @@ export default function Home() {
         <div className="mx-auto flex w-full flex-col gap-10">
           <div className="flex flex-col items-center px-6 text-center sm:px-0">
             <div className="text-6xl sm:text-7xl md:text-8xl font-semibold tracking-tight">
-              Juric<span className="text-neutral-400">.</span>
+              Petar Juric<span className="text-neutral-400">.</span>
             </div>
             <p className="max-w-2xl text-base text-neutral-300 sm:text-lg sm:mx-auto">
-              Welcome, the globe with your two points, then the follow-up. No fades or
-              sticky layers—just scroll.
+              I'm here, and you're there. But with the internet, we can be anywhere.
             </p>
           </div>
 
@@ -85,6 +85,16 @@ export default function Home() {
               </div>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="border-t border-white/5 px-6 pb-20 pt-12 sm:px-12 sm:pt-14">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+          <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/40">
+            <span>Spotify pulse</span>
+            <span className="text-[11px] font-medium text-white/40">Polled every few seconds</span>
+          </div>
+          <NowPlaying />
         </div>
       </section>
     </main>

@@ -20,6 +20,18 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Spotify "currently listening" setup
+
+The home page now shows a live Spotify block at the bottom. Add the following to `.env.local`:
+
+```
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
+SPOTIFY_REFRESH_TOKEN=...
+```
+
+Create a Spotify app at <https://developer.spotify.com/dashboard>, generate a refresh token with the `user-read-currently-playing` and `user-read-playback-state` scopes, and drop the values in. The API polls Spotify every few seconds but caches responses briefly to avoid rate limits.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
